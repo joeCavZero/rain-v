@@ -1,0 +1,13 @@
+{
+    "DESIGN_NAME": "central_processing_unit",
+
+    "VERILOG_FILES": [
+        "dir::../src/central_processing_unit.v",
+        "dir::../src/program_counter.v",
+        "dir::../src/register_bank.v",
+        "dir::../src/arithmetic_logic_unit.v"
+    ],
+
+    "CLOCK_PORT": "clk",
+    "CLOCK_PERIOD": 10
+}
