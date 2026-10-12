@@ -1,46 +1,15 @@
-/*
-    Program Counter de 32 bits.
-
-    O PC guarda o endereço da instrução atual.
-
-    A cada borda de subida do clock:
-        - Se reset estiver ativo:
-            pc = 0
-        - Senão:
-            pc = pc + 4
-
-    Somamos 4 porque cada instrução RISC-V RV32 possui 4 bytes.
-*/
-
+/* PC RV32I: avanca pelo numero de instrucoes buscadas; aceita redirecionamento. */
 module program_counter (
-    input  wire        clk,   // clock do processador
-    input  wire        reset, // coloca o PC de volta em 0
-
-    output reg [31:0]   value  // valor atual do Program Counter
+    input wire clk, reset,
+    input wire enable,
+    input wire redirect,
+    input wire [31:0] redirect_target,
+    input wire [2:0] advance_words,
+    output reg [31:0] value
 );
-
-    /*
-        Este bloco é executado a cada borda de subida do clock.
-
-        posedge clk:
-            significa "quando o clock muda de 0 para 1".
-    */
     always @(posedge clk) begin
-
-        /*
-            Se reset estiver ativo:
-                volta o PC para 0.
-
-            Senão:
-                avança para a próxima instrução.
-        */
-        if (reset) begin
-            value <= 32'h00000000;
-        end
-        else begin
-            value <= value + 32'd4;
-        end
-
+        if (reset) value <= 32'b0;
+        else if (redirect) value <= redirect_target;
+        else if (enable) value <= value + {27'b0,advance_words,2'b00};
     end
-
 endmodule
