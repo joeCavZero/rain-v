@@ -474,16 +474,14 @@ module arithmetic_logical_unit_tb;
         $display("--------------------------------------------");
 
 
-        if (failed == 0)
-            $display("TODOS OS TESTES PASSARAM.");
-        else
-            $display("EXISTEM TESTES COM ERRO.");
-
-
         // Pequeno atraso apenas para deixar o waveform mais
         // confortável de visualizar no GTKWave.
         #5;
 
+        if (failed != 0)
+            $fatal(1, "EXISTEM TESTES COM ERRO: %0d de %0d falharam.", failed, tests);
+
+        $display("PASS arithmetic_logic_unit");
         $finish;
 
     end
