@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 
-module arithmetic_logical_unit_tb;
+module arithmetic_logic_unit_tb;
 
     // ------------------------------------------------------------
     // Entradas da ALU
@@ -20,7 +20,7 @@ module arithmetic_logical_unit_tb;
     // ------------------------------------------------------------
     // Códigos das operações.
     //
-    // Devem ser iguais aos definidos em arithmetic_logical_unit.v.
+    // Devem ser iguais aos definidos em arithmetic_logic_unit.v.
     // ------------------------------------------------------------
 
     localparam ALU_ADD    = 5'd0;
@@ -47,7 +47,7 @@ module arithmetic_logical_unit_tb;
     // Instância da ALU que será testada.
     // ------------------------------------------------------------
 
-    arithmetic_logical_unit dut (
+    arithmetic_logic_unit dut (
         .operand_a(operand_a),
         .operand_b(operand_b),
         .op(op),
@@ -137,7 +137,7 @@ module arithmetic_logical_unit_tb;
     initial begin
 
         $dumpfile("target/wave.vcd");
-        $dumpvars(0, arithmetic_logical_unit_tb);
+        $dumpvars(0, arithmetic_logic_unit_tb);
 
     end
 

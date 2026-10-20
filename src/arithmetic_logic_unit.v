@@ -1,4 +1,4 @@
-module arithmetic_logical_unit (
+module arithmetic_logic_unit (
     input  wire [31:0] operand_a,
     input  wire [31:0] operand_b,
     input  wire [4:0]  op,
