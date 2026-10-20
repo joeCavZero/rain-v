@@ -41,3 +41,7 @@ run execution_lane src/arithmetic_logic_unit.v src/operand_selection.v \
     src/instruction_decoder.v src/immediate_generator.v
 run execution_unit src/arithmetic_logic_unit.v src/operand_selection.v \
     src/branch_unit.v src/execution_lane.v src/execution_unit.v
+run execution_integration src/arithmetic_logic_unit.v src/operand_selection.v \
+    src/branch_unit.v src/execution_lane.v src/execution_unit.v \
+    src/central_processing_unit.v src/program_counter.v src/instruction_fetch.v \
+    src/pipeline_registers.v src/instruction_decoder.v src/immediate_generator.v
