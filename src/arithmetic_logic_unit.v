@@ -38,18 +38,27 @@ module arithmetic_logic_unit (
 
 
     // ------------------------------------------------------------
-    // Valores auxiliares de 64 bits usados nas multiplicações.
+    // Um único multiplicador para MUL, MULH, MULHSU e MULHU.
     //
-    // signed * signed
+    // Cada operando ganha um bit extra à esquerda: o bit de sinal
+    // quando a operação o trata como signed, zero quando unsigned.
+    // Assim um produto 33 x 33 com sinal, truncado em 64 bits,
+    // cobre os três casos:
     //
-    // signed * unsigned
+    //     MULH   : A signed,   B signed
+    //     MULHSU : A signed,   B unsigned
+    //     MULHU  : A unsigned, B unsigned
     //
-    // unsigned * unsigned
+    // MUL usa só os 32 bits inferiores, que não dependem do sinal.
     // ------------------------------------------------------------
 
-    reg signed [63:0] mul_signed;
-    reg signed [63:0] mul_signed_unsigned;
-    reg        [63:0] mul_unsigned;
+    wire a_is_signed = (op == ALU_MULH) || (op == ALU_MULHSU);
+    wire b_is_signed = (op == ALU_MULH);
+
+    wire signed [32:0] mul_a = {a_is_signed & operand_a[31], operand_a};
+    wire signed [32:0] mul_b = {b_is_signed & operand_b[31], operand_b};
+
+    wire signed [63:0] product = mul_a * mul_b;
 
 
     // ------------------------------------------------------------
@@ -68,25 +77,6 @@ module arithmetic_logic_unit (
         // Evita inferência de latch caso alguma operação não seja
         // reconhecida.
         result = 32'h00000000;
-
-
-        // --------------------------------------------------------
-        // Calcula previamente os produtos de 64 bits.
-        //
-        // Eles serão usados pelas instruções MUL/MULH/MULHSU/MULHU.
-        // --------------------------------------------------------
-
-        mul_signed =
-            $signed(operand_a) *
-            $signed(operand_b);
-
-        mul_signed_unsigned =
-            $signed(operand_a) *
-            $signed({1'b0, operand_b});
-
-        mul_unsigned =
-            operand_a *
-            operand_b;
 
 
         // --------------------------------------------------------
@@ -237,7 +227,7 @@ module arithmetic_logic_unit (
             // ----------------------------------------------------
 
             ALU_MUL: begin
-                result = mul_unsigned[31:0];
+                result = product[31:0];
             end
 
 
@@ -250,7 +240,7 @@ module arithmetic_logic_unit (
             // ----------------------------------------------------
 
             ALU_MULH: begin
-                result = mul_signed[63:32];
+                result = product[63:32];
             end
 
 
@@ -264,7 +254,7 @@ module arithmetic_logic_unit (
             // ----------------------------------------------------
 
             ALU_MULHSU: begin
-                result = mul_signed_unsigned[63:32];
+                result = product[63:32];
             end
 
 
@@ -277,7 +267,7 @@ module arithmetic_logic_unit (
             // ----------------------------------------------------
 
             ALU_MULHU: begin
-                result = mul_unsigned[63:32];
+                result = product[63:32];
             end
 
 
