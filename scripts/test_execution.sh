@@ -35,3 +35,4 @@ run() {
 
 run arithmetic_logic_unit src/arithmetic_logic_unit.v
 run operand_selection src/operand_selection.v
+run branch_unit src/branch_unit.v
