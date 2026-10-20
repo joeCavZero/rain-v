@@ -7,7 +7,8 @@ wire taken, redirect;
 wire [31:0] target;
 branch_unit dut(.*);
 
-localparam NONE=4'd0, BEQ=4'd1, BNE=4'd2, BLT=4'd3, BGE=4'd4, BLTU=4'd5, BGEU=4'd6;
+localparam NONE=4'd0, BEQ=4'd1, BNE=4'd2, BLT=4'd3, BGE=4'd4, BLTU=4'd5, BGEU=4'd6,
+           JAL=4'd7, JALR=4'd8;
 
 integer kind;
 
@@ -66,7 +67,20 @@ initial begin
     check(1, BEQ, 32'd0, 32'd0, 32'h00000100, 32'hFFFFFFF0, 1, 32'h000000F0);
     check(1, BEQ, 32'd0, 32'd0, 32'hFFFFFFFC, 32'h00000008, 1, 32'h00000004);
 
+    // JAL: sempre taken, alvo relativo ao PC; rs1/rs2 nao importam.
+    check(1, JAL, 32'h12345678, 32'h9ABCDEF0, 32'h00000100, 32'hFFFFFF00, 1, 32'h00000000);
+    check(1, JAL, 32'h12345678, 32'h9ABCDEF0, 32'hFFFFFFFC, 32'h00000008, 1, 32'h00000004);
+    check(1, JAL, 32'd0,        32'd0,        32'h00000200, 32'h00000010, 1, 32'h00000210);
+
+    // JALR: alvo = (rs1 + imm) com bit 0 zerado; o PC nao entra.
+    check(1, JALR, 32'h00001001, 32'd0, 32'h00000500, 32'h00000000, 1, 32'h00001000);
+    check(1, JALR, 32'h00001002, 32'd0, 32'h00000500, 32'h00000000, 1, 32'h00001002);
+    check(1, JALR, 32'h00001000, 32'd0, 32'h00000500, 32'hFFFFFFFC, 1, 32'h00000FFC);
+    check(1, JALR, 32'h00001003, 32'd0, 32'h00000500, 32'hFFFFFFFE, 1, 32'h00001000);
+    check(1, JALR, 32'hFFFFFFFF, 32'd0, 32'h00000500, 32'h00000002, 1, 32'h00000000);
+
     // valid=0: taken continua refletindo a condicao, redirect nao.
+    check(0, JAL,  32'd0, 32'd0, 32'h100, 32'h8, 1, 32'h108);
     check(0, BEQ, 32'd5, 32'd5, 32'h100, 32'h8, 1, 32'h108);
 
     // valid=0 com operandos desconhecidos nunca redireciona.
