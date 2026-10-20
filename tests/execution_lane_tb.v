@@ -2,6 +2,7 @@
 /* Instrucoes reais passam pelo instruction_decoder e os operandos vem de um
    banco de registradores do proprio testbench, como sera na integracao. */
 module execution_lane_tb;
+reg valid;
 reg [31:0] instruction, instruction_pc;
 reg [31:0] regs [0:31];
 
@@ -16,9 +17,11 @@ instruction_decoder decoder(.*);
 wire alu_src_pc = alu_src_imm & ~uses_rs1;
 wire [31:0] rs1_value = regs[rs1];
 wire [31:0] rs2_value = regs[rs2];
-wire [31:0] result, store_data;
+wire [31:0] result, store_data, redirect_target;
+wire redirect;
 
 execution_lane lane (
+    .valid(valid),
     .instruction_pc(instruction_pc),
     .immediate(immediate),
     .rs1_value(rs1_value),
@@ -27,8 +30,11 @@ execution_lane lane (
     .alu_src_imm(alu_src_imm),
     .alu_src_pc(alu_src_pc),
     .wb_sel(wb_sel),
+    .branch_type(branch_type),
     .result(result),
-    .store_data(store_data)
+    .store_data(store_data),
+    .redirect(redirect),
+    .redirect_target(redirect_target)
 );
 
 localparam OP = 7'b0110011, OP_IMM = 7'b0010011, LOAD = 7'b0000011,
@@ -67,6 +73,22 @@ task run;
         if (illegal) $fatal(1, "%h decodificou como ilegal", word);
         if (result !== expected_result)
             $fatal(1, "instrucao %h (pc=%h): result=%h, esperado %h", word, pc, result, expected_result);
+        if (branch_type == 4'd0 && redirect !== 1'b0)
+            $fatal(1, "instrucao %h sem desvio gerou redirect", word);
+    end
+endtask
+
+task run_branch;
+    input [31:0] word, pc;
+    input        expected_redirect;
+    input [31:0] expected_target;
+    begin
+        instruction = word; instruction_pc = pc; #1;
+        if (illegal) $fatal(1, "%h decodificou como ilegal", word);
+        if (redirect !== expected_redirect ||
+            (expected_redirect && redirect_target !== expected_target))
+            $fatal(1, "desvio %h (pc=%h): redirect=%b target=%h, esperado redirect=%b target=%h",
+                   word, pc, redirect, redirect_target, expected_redirect, expected_target);
     end
 endtask
 
@@ -84,6 +106,7 @@ integer k;
 initial begin
     $dumpfile("target/wave.vcd"); $dumpvars(0, execution_lane_tb);
 
+    valid = 1;
     for (k = 0; k < 32; k = k + 1) regs[k] = 32'hA5A50000 | k;
     regs[0] = 32'h00000000;
     regs[1] = 32'h00000005;
@@ -156,6 +179,30 @@ initial begin
     // JAL e JALR escrevem PC+4.
     run(j_type(21'h1FFFF0, 5'd1), 32'h300, 32'h00000304);                   // jal -16
     run(i_type(12'h000, 5'd5, 3'b000, 5'd1, JALR_OP), 32'h400, 32'h00000404); // jalr
+
+    // Desvios condicionais: x1=5, x2=7, x3=-3.
+    run_branch(32'h00000463, 32'h100, 1, 32'h00000108);                      // beq x0,x0,+8
+    run_branch(b_type(13'd16,    5'd2, 5'd1, 3'b000), 32'h100, 0, 32'h0);    // beq 5,7
+    run_branch(b_type(13'h1FF8,  5'd2, 5'd1, 3'b001), 32'h100, 1, 32'hF8);   // bne -8
+    run_branch(b_type(13'd32,    5'd1, 5'd3, 3'b100), 32'h100, 1, 32'h120);  // blt -3<5
+    run_branch(b_type(13'd32,    5'd1, 5'd3, 3'b110), 32'h100, 0, 32'h0);    // bltu
+    run_branch(b_type(13'd64,    5'd3, 5'd1, 3'b101), 32'h100, 1, 32'h140);  // bge 5>=-3
+    run_branch(b_type(13'd64,    5'd3, 5'd1, 3'b111), 32'h100, 0, 32'h0);    // bgeu
+
+    // Saltos: JAL relativo ao PC; JALR = (rs1 + imm) com bit 0 zerado.
+    run_branch(32'h008000ef, 32'h200, 1, 32'h00000208);                      // jal +8
+    run_branch(j_type(21'h1FFFF0, 5'd1), 32'h300, 1, 32'h000002F0);          // jal -16
+    run_branch(i_type(12'h003, 5'd5, 3'b000, 5'd1, JALR_OP), 32'h400, 1, 32'h00001002);
+    run_branch(i_type(12'hFFC, 5'd5, 3'b000, 5'd0, JALR_OP), 32'h400, 1, 32'h00000FFC);
+
+    // valid=0 nunca redireciona.
+    valid = 0;
+    run_branch(32'h008000ef, 32'h200, 0, 32'h0);
+    valid = 1;
+
+    // Instrucao ilegal: o decoder zera os controles, entao nao ha desvio.
+    instruction = 32'hffffffff; instruction_pc = 32'h500; #1;
+    if (!illegal || redirect !== 1'b0) $fatal(1, "instrucao ilegal nao pode redirecionar");
 
     $display("PASS execution_lane");
     $finish;
