@@ -1,0 +1,47 @@
+#!/bin/sh
+# Testbenches das unidades de execucao.
+# Uso: sh scripts/test_execution.sh
+# Cada chamada de run recebe o nome do modulo e as fontes de que o
+# testbench tests/<nome>_tb.v depende. So essas fontes sao compiladas.
+
+set -eu
+
+mkdir -p target
+
+run() {
+    name="$1"
+    shift
+    tb="tests/${name}_tb.v"
+    top=$(sed -n 's/^[[:space:]]*module[[:space:]][[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' "$tb" | head -n 1)
+    log="target/${name}.log"
+
+    echo "=== ${name} ==="
+    iverilog -g2012 -Wall -Wno-timescale -s "$top" -o "target/${name}.out" "$@" "$tb"
+
+    if ! vvp -n "target/${name}.out" > "$log" 2>&1; then
+        cat "$log"
+        echo "FALHA: ${name}"
+        exit 1
+    fi
+
+    if ! grep -qx "PASS ${name}" "$log"; then
+        cat "$log"
+        echo "FALHA: ${name} nao imprimiu 'PASS ${name}'"
+        exit 1
+    fi
+
+    echo "PASS ${name}"
+}
+
+run arithmetic_logic_unit src/arithmetic_logic_unit.v
+run operand_selection src/operand_selection.v
+run branch_unit src/branch_unit.v
+run execution_lane src/arithmetic_logic_unit.v src/operand_selection.v \
+    src/branch_unit.v src/execution_lane.v \
+    src/instruction_decoder.v src/immediate_generator.v
+run execution_unit src/arithmetic_logic_unit.v src/operand_selection.v \
+    src/branch_unit.v src/execution_lane.v src/execution_unit.v
+run execution_integration src/arithmetic_logic_unit.v src/operand_selection.v \
+    src/branch_unit.v src/execution_lane.v src/execution_unit.v \
+    src/central_processing_unit.v src/program_counter.v src/instruction_fetch.v \
+    src/pipeline_registers.v src/instruction_decoder.v src/immediate_generator.v
