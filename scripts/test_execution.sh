@@ -36,3 +36,5 @@ run() {
 run arithmetic_logic_unit src/arithmetic_logic_unit.v
 run operand_selection src/operand_selection.v
 run branch_unit src/branch_unit.v
+run execution_lane src/arithmetic_logic_unit.v src/operand_selection.v \
+    src/execution_lane.v src/instruction_decoder.v src/immediate_generator.v
