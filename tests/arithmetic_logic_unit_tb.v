@@ -65,6 +65,18 @@ module arithmetic_logic_unit_tb;
 
 
     // ------------------------------------------------------------
+    // Estado do teste aleatório.
+    // ------------------------------------------------------------
+
+    localparam RANDOM_ITERATIONS = 20000;
+
+    reg [31:0] random_state;
+    reg [2:0]  selector;
+    reg [31:0] expected;
+    integer    iteration;
+
+
+    // ------------------------------------------------------------
     // Task utilizada para executar um teste.
     //
     // Recebe:
@@ -126,6 +138,118 @@ module arithmetic_logic_unit_tb;
 
         end
     endtask
+
+
+    // ------------------------------------------------------------
+    // Modelo de referência para o teste aleatório.
+    //
+    // Escrito de forma diferente da ALU de propósito: shifts bit a
+    // bit, comparações pelo borrow da subtração e produtos em 64
+    // bits com extensão de sinal explícita.
+    // ------------------------------------------------------------
+
+    function [31:0] reference_alu;
+        input [4:0]  f_op;
+        input [31:0] f_a;
+        input [31:0] f_b;
+
+        reg [31:0] value;
+        reg [32:0] difference;
+        reg [63:0] wide_a;
+        reg [63:0] wide_b;
+        reg [63:0] product;
+        integer    k;
+
+        begin
+            value      = f_a;
+            difference = {1'b0, f_a} - {1'b0, f_b};
+            wide_a     = {32'b0, f_a};
+            wide_b     = {32'b0, f_b};
+
+            case (f_op)
+                ALU_ADD: reference_alu = f_a + f_b;
+                ALU_SUB: reference_alu = f_a + ~f_b + 32'd1;
+
+                ALU_SLL: begin
+                    for (k = 0; k < f_b[4:0]; k = k + 1)
+                        value = {value[30:0], 1'b0};
+                    reference_alu = value;
+                end
+
+                ALU_SRL: begin
+                    for (k = 0; k < f_b[4:0]; k = k + 1)
+                        value = {1'b0, value[31:1]};
+                    reference_alu = value;
+                end
+
+                ALU_SRA: begin
+                    for (k = 0; k < f_b[4:0]; k = k + 1)
+                        value = {value[31], value[31:1]};
+                    reference_alu = value;
+                end
+
+                // Sinais diferentes: A é menor se for negativo.
+                // Sinais iguais: vale a comparação sem sinal.
+                ALU_SLT: reference_alu = (f_a[31] != f_b[31]) ?
+                                         {31'b0, f_a[31]} :
+                                         {31'b0, difference[32]};
+
+                ALU_SLTU: reference_alu = {31'b0, difference[32]};
+
+                ALU_XOR: reference_alu = f_a ^ f_b;
+                ALU_OR:  reference_alu = f_a | f_b;
+                ALU_AND: reference_alu = f_a & f_b;
+
+                ALU_MUL, ALU_MULH, ALU_MULHSU, ALU_MULHU: begin
+                    if (f_op == ALU_MULH || f_op == ALU_MULHSU)
+                        wide_a = {{32{f_a[31]}}, f_a};
+                    if (f_op == ALU_MULH)
+                        wide_b = {{32{f_b[31]}}, f_b};
+
+                    product = wide_a * wide_b;
+
+                    reference_alu = (f_op == ALU_MUL) ? product[31:0] :
+                                                       product[63:32];
+                end
+
+                default: reference_alu = 32'h00000000;
+            endcase
+        end
+    endfunction
+
+
+    // Gerador xorshift32: sequência fixa para a semente dada, então
+    // qualquer falha pode ser reproduzida.
+    function [31:0] next_random;
+        input [31:0] f_state;
+
+        reg [31:0] x;
+
+        begin
+            x = f_state;
+            x = x ^ (x << 13);
+            x = x ^ (x >> 17);
+            x = x ^ (x << 5);
+            next_random = x;
+        end
+    endfunction
+
+
+    // Mistura valores de borda com valores aleatórios.
+    function [31:0] operand_value;
+        input [2:0]  f_selector;
+        input [31:0] f_random;
+
+        begin
+            case (f_selector)
+                3'd0:    operand_value = 32'h00000000;
+                3'd1:    operand_value = 32'hFFFFFFFF;
+                3'd2:    operand_value = 32'h80000000;
+                3'd3:    operand_value = 32'h7FFFFFFF;
+                default: operand_value = f_random;
+            endcase
+        end
+    endfunction
 
 
     // ------------------------------------------------------------
@@ -456,6 +580,99 @@ module arithmetic_logic_unit_tb;
             32'h87654321,
             32'h00000000
         );
+
+
+        // ========================================================
+        // Casos de borda.
+        // ========================================================
+
+        // Shifts por 0 e 31; só os 5 bits menos significativos
+        // de operand_b contam (32 desloca 0, 0xFFFFFFE1 desloca 1).
+        check(ALU_SLL, 32'h12345678, 32'd0,         32'h12345678);
+        check(ALU_SLL, 32'h00000001, 32'd31,        32'h80000000);
+        check(ALU_SLL, 32'h00000001, 32'd32,        32'h00000001);
+        check(ALU_SLL, 32'h00000001, 32'hFFFFFFE1,  32'h00000002);
+        check(ALU_SRL, 32'h80000000, 32'd0,         32'h80000000);
+        check(ALU_SRL, 32'h80000000, 32'd31,        32'h00000001);
+        check(ALU_SRA, 32'h80000000, 32'd31,        32'hFFFFFFFF);
+        check(ALU_SRA, 32'h7FFFFFFF, 32'd31,        32'h00000000);
+        check(ALU_SRA, 32'h80000000, 32'd33,        32'hC0000000);
+
+        // Comparações nos extremos e com operandos iguais.
+        check(ALU_SLT,  32'h80000000, 32'h7FFFFFFF, 32'h00000001);
+        check(ALU_SLT,  32'h7FFFFFFF, 32'h80000000, 32'h00000000);
+        check(ALU_SLT,  32'd5,        32'd5,        32'h00000000);
+        check(ALU_SLTU, 32'h00000000, 32'hFFFFFFFF, 32'h00000001);
+        check(ALU_SLTU, 32'hFFFFFFFF, 32'h00000000, 32'h00000000);
+        check(ALU_SLTU, 32'd5,        32'd5,        32'h00000000);
+
+        // Overflow é modular: nenhuma exceção no RV32I.
+        check(ALU_ADD, 32'h7FFFFFFF, 32'd1, 32'h80000000);
+        check(ALU_SUB, 32'h00000000, 32'd1, 32'hFFFFFFFF);
+        check(ALU_SUB, 32'h80000000, 32'd1, 32'h7FFFFFFF);
+
+        // Multiplicação. MULH(FFFFFFFF, 1) e MULHU(FFFFFFFF, 1)
+        // separam o tratamento signed do unsigned.
+        check(ALU_MUL,    32'hFFFFFFFF, 32'hFFFFFFFF, 32'h00000001);
+        check(ALU_MUL,    32'h80000000, 32'h80000000, 32'h00000000);
+        check(ALU_MULH,   32'hFFFFFFFF, 32'h00000001, 32'hFFFFFFFF);
+        check(ALU_MULH,   32'h80000000, 32'h80000000, 32'h40000000);
+        check(ALU_MULH,   32'hFFFFFFFF, 32'hFFFFFFFF, 32'h00000000);
+        check(ALU_MULH,   32'h7FFFFFFF, 32'h7FFFFFFF, 32'h3FFFFFFF);
+        check(ALU_MULHSU, 32'hFFFFFFFF, 32'hFFFFFFFF, 32'hFFFFFFFF);
+        check(ALU_MULHSU, 32'h7FFFFFFF, 32'hFFFFFFFF, 32'h7FFFFFFE);
+        check(ALU_MULHSU, 32'h80000000, 32'hFFFFFFFF, 32'h80000000);
+        check(ALU_MULHU,  32'h80000000, 32'd2,        32'h00000001);
+        check(ALU_MULHU,  32'hFFFFFFFF, 32'h00000001, 32'h00000000);
+
+        // Todos os códigos sem operação devolvem zero.
+        for (iteration = 14; iteration < 32; iteration = iteration + 1)
+            check(iteration[4:0], 32'h12345678, 32'h9ABCDEF0, 32'h00000000);
+
+
+        // ========================================================
+        // Teste aleatório contra o modelo de referência.
+        //
+        // Sem waveform durante o laço, para o VCD não crescer.
+        // ========================================================
+
+        $dumpoff;
+        random_state = 32'h2545F491;
+
+        for (iteration = 0; iteration < RANDOM_ITERATIONS; iteration = iteration + 1) begin
+
+            random_state = next_random(random_state);
+            op = random_state % 14;
+
+            random_state = next_random(random_state);
+            selector = random_state[2:0];
+            random_state = next_random(random_state);
+            operand_a = operand_value(selector, random_state);
+
+            random_state = next_random(random_state);
+            selector = random_state[2:0];
+            random_state = next_random(random_state);
+            operand_b = operand_value(selector, random_state);
+
+            #1;
+
+            expected = reference_alu(op, operand_a, operand_b);
+            tests = tests + 1;
+
+            if (result === expected) begin
+                passed = passed + 1;
+            end else begin
+                failed = failed + 1;
+                if (failed <= 10)
+                    $display(
+                        "FALHOU (aleatorio) | op=%0d | a=%h | b=%h | esperado=%h | recebido=%h",
+                        op, operand_a, operand_b, expected, result
+                    );
+            end
+
+        end
+
+        $dumpon;
 
 
         // ========================================================
